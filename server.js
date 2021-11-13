@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const { paynowRouter } = require("./routes/paynow");
+const { callbackRouter } = require("./routes/callback");
 
 const app = express();
 
@@ -15,9 +17,8 @@ app.use(helmet());
 app.use(helmet.hidePoweredBy());
 
 // routes
-app.get("/", (req, res) => {
-  res.json({ message: "Hello World" });
-});
+app.use(paynowRouter);
+app.use(callbackRouter);
 
 const port = process.env.PORT || 3001;
 
