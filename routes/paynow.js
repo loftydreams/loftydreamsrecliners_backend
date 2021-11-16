@@ -1,11 +1,62 @@
 const express = require("express");
 const https = require("https");
 const PaytmChecksum = require("paytmchecksum");
+const { calcPrice } = require("../helpers/calc-price");
+const { firebaseAdmin, db } = require("../helpers/firebase-admin");
+const { verifyOrderData } = require("../helpers/verify-order-data");
 
 const router = express.Router();
 
 router.post("/api/paynow", async (req, res) => {
-  const { name, email, phone } = req.body;
+  const orderData = req.body;
+  let authData = {};
+  try {
+    const { uid, email: usermail } = await firebaseAdmin
+      .auth()
+      .verifyIdToken(orderData.idToken);
+
+    authData["uid"] = uid;
+    authData["usermail"] = usermail;
+  } catch (error) {
+    return res.status(401).json({ message: "Unauthorized access!" });
+  }
+
+  const verifiedOrderData = verifyOrderData(orderData);
+
+  if (!verifiedOrderData) {
+    return res.status(400).json({ message: "Invalid data provided!" });
+  }
+
+  let updatedItems = [];
+  let totalPrice = 0;
+  try {
+    const items = await calcPrice(verifiedOrderData.itemsToPurchase);
+    updatedItems = items.updatedItems;
+    totalPrice = items.totalPrice;
+  } catch (error) {
+    return res.status(400).json({ message: "Invalid products data!" });
+  }
+
+  let orderId = "";
+  try {
+    const newOrderRef = db.collection("orders").doc();
+    orderId = newOrderRef.id;
+    const newOrder = {
+      userId: authData.uid,
+      userMail: authData.usermail,
+      customerDetails: verifiedOrderData.customerData,
+      shippingAddress: verifiedOrderData.shippingAddress,
+      items: updatedItems,
+      totalPrice,
+      paymentStatus: {
+        resultStatus: "PENDING",
+        resultMsg: "Payment is not completed.",
+      },
+    };
+    await newOrderRef.set(newOrder);
+  } catch (error) {
+    return res.status(400).json({ message: "Unable to save order." });
+  }
 
   let paytmParams = {};
 
@@ -13,14 +64,14 @@ router.post("/api/paynow", async (req, res) => {
     requestType: "Payment",
     mid: process.env.PAYTM_MID,
     websiteName: process.env.PAYTM_WEBSITE,
-    orderId: new Date().getTime().toString(),
+    orderId: orderId,
     callbackUrl: "http://localhost:3001/api/callback",
     txnAmount: {
-      value: "1.00",
+      value: totalPrice,
       currency: "INR",
     },
     userInfo: {
-      custId: email,
+      custId: authData.uid,
     },
   };
 
@@ -61,7 +112,7 @@ router.post("/api/paynow", async (req, res) => {
         amount: paytmParams.body.txnAmount.value,
         tokenType: "TXN_TOKEN",
         userDetail: {
-          custId: email,
+          custId: authData.uid,
         },
       });
     });
