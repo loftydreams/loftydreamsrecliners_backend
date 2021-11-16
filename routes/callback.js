@@ -1,6 +1,7 @@
 const express = require("express");
 const https = require("https");
 const PaytmChecksum = require("paytmchecksum");
+const { db } = require("../helpers/firebase-admin");
 
 const router = express.Router();
 
@@ -47,9 +48,10 @@ router.post("/api/callback", async (req, res) => {
       const post_data = JSON.stringify(paytmParams);
       var options = {
         /* for Staging */
-        hostname: "securegw-stage.paytm.in",
+        // hostname: "securegw-stage.paytm.in",
         /* for Production */
         // hostname: 'securegw.paytm.in',
+        hostname: process.env.HOSTNAME,
         port: 443,
         path: "/v3/order/status",
         method: "POST",
@@ -65,16 +67,19 @@ router.post("/api/callback", async (req, res) => {
           response += chunk;
         });
 
-        post_res.on("end", function () {
+        post_res.on("end", async function () {
           const status = JSON.parse(response).body;
-          console.log(status);
+          const orderRef = db.collection("orders").doc(status.orderId);
+          await orderRef.update({
+            paymentStatus: status.resultInfo,
+          });
           if (status.resultInfo.resultStatus === "TXN_SUCCESS") {
             res.redirect(
-              `${process.env.CLIENT_URL}/payment?success=true&orderId=${status.orderId}`
+              `${process.env.CLIENT_URL}/payment/status?success=true&orderId=${status.orderId}`
             );
           } else {
             res.redirect(
-              `${process.env.CLIENT_URL}/payment?success=false&orderId=${status.orderId}`
+              `${process.env.CLIENT_URL}/payment/status?success=false&orderId=${status.orderId}`
             );
           }
         });

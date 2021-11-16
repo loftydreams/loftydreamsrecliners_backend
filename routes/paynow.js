@@ -65,7 +65,7 @@ router.post("/api/paynow", async (req, res) => {
     mid: process.env.PAYTM_MID,
     websiteName: process.env.PAYTM_WEBSITE,
     orderId: orderId,
-    callbackUrl: "http://localhost:3001/api/callback",
+    callbackUrl: `${process.env.SERVER_URL}/api/callback`,
     txnAmount: {
       value: totalPrice,
       currency: "INR",
@@ -87,9 +87,10 @@ router.post("/api/paynow", async (req, res) => {
   const post_data = JSON.stringify(paytmParams);
   const options = {
     /* for Staging */
-    hostname: "securegw-stage.paytm.in",
+    // hostname: "securegw-stage.paytm.in",
     /* for Production */
     // hostname: 'securegw.paytm.in',
+    hostname: process.env.HOSTNAME,
     port: 443,
     path: `/theia/api/v1/initiateTransaction?mid=${process.env.PAYTM_MID}&orderId=${paytmParams.body.orderId}`,
     method: "POST",
